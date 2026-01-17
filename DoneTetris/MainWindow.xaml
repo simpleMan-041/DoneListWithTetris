@@ -1,16 +1,138 @@
 ﻿<Window x:Class="DoneTetris.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:DoneTetris"
-        mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="DoneTetris" Height="600" Width="800">
+
+    <Grid Margin="10">
+        
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="12*"/>
+            <RowDefinition Height="12*"/>
+            <RowDefinition Height="14*"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="127*"/>
-            <ColumnDefinition Width="674*"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="4*"/>
+            <ColumnDefinition Width="8*"/>
+            <ColumnDefinition Width="4*"/>
+            <ColumnDefinition Width="4*"/>
+            <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
+
+        <Border
+            Grid.Row="1"
+            Grid.Column="1"
+            Padding="12"
+            CornerRadius="12"
+            BorderThickness="1"
+            BorderBrush="Gray"
+            Background="#111"
+            Margin="8">
+
+            <StackPanel>
+                <TextBlock Text="スコア" Opacity="0.8" FontSize="12" Foreground="Gray"/>
+            </StackPanel>
+        </Border>
+
+        <Border
+            Grid.Row="2"
+            Grid.Column="1"
+            Padding="12"
+            CornerRadius="12"
+            BorderThickness="1"
+            BorderBrush="Gray"
+            Background="#111"
+            Margin="8">
+
+            <StackPanel>
+                <TextBlock Text="継続日数" Opacity="0.8" FontSize="12" Foreground="Gray"/>
+            </StackPanel>
+        </Border>
+
+        <Border
+            Grid.Row="1"
+            Grid.Column="4"
+            Padding="12"
+            CornerRadius="12"
+            BorderThickness="1"
+            BorderBrush="Gray"
+            Background="#111"
+            Margin="8">
+
+            <StackPanel>
+                <TextBlock Text="今日のDone" Opacity="0.8" FontSize="12" Foreground="Gray"/>
+            </StackPanel>
+        </Border>
+
+        <Border
+            Grid.Row="2"
+            Grid.Column="4"
+            Padding="12"
+            CornerRadius="12"
+            BorderThickness="1"
+            BorderBrush="Gray"
+            Background="#111"
+            Margin="8">
+
+            <StackPanel>
+                <TextBlock Text="総Done" Opacity="0.8" FontSize="12" Foreground="Gray"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1"
+                Grid.Column="2"
+                Grid.RowSpan="3"
+                BorderBrush="Gray"
+                BorderThickness="2"
+                Background="#111"
+                MouseDown="TetrisArea_Click">
+            <TextBlock Text="テトリス画面"
+                       Foreground="Gray"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+        </Border>
+
+        <Border Grid.Row="1"
+                Grid.Column="3"
+                Grid.RowSpan="2"
+                BorderBrush="Gray"
+                BorderThickness="2"
+                Background="#111">
+            <TextBlock Text="次ミノ表示エリア"
+                       Foreground="Gray"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+        </Border>
+
+        <Border Grid.Row="3"
+                Grid.Column="1"
+                Margin="12"
+                BorderBrush="Gray"
+                BorderThickness="2"
+                Background="MediumPurple">
+            <TextBlock Text="タイトルロゴ画像"
+                       Foreground="White"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+        </Border>
+        
+                
+        <Border Grid.Row="3"
+                Grid.Column="3"
+                Grid.ColumnSpan="2"
+                Margin="12"
+                BorderBrush="Gray"
+                BorderThickness="2"
+                Background="#111">
+            <TextBlock Text="Done追加入力欄"
+                       Foreground="Gray"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+        </Border>
+
 
     </Grid>
 </Window>
