@@ -1,9 +1,11 @@
-﻿using System;
+﻿using Microsoft.Data.Sqlite;
+using System;
 using System.Collections.Generic;
-using System.Text;
-using Microsoft.Data.Sqlite;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http.Headers;
+using System.Text;
+using System.Windows;
 
 namespace DoneListWithTetris
 {
@@ -36,8 +38,8 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS Done (
     Id              INTEGER PRIMARY KEY AUTOINCREMENT,
     BatchId         INTEGER NOT NULL,
-    DoneDate        TEXT    NOT NULL,　
-    Text            TEXT    NOT NULL,
+    DoneDate        TEXT    NOT NULL,
+    DoneText        TEXT    NOT NULL,
     CreatedAt       TEXT    NOT NULL,
     GrantedLengthN  INTEGER NOT NULL CHECK (GrantedLengthN BETWEEN 1 AND 5)
 );
@@ -67,7 +69,10 @@ CREATE INDEX IF NOT EXISTS IX_Move_PlacedAt ON Move(PlacedAt);
 INSERT OR IGNORE INTO Meta(Key, Value) VALUES ('CurrentStreak', '0');
 INSERT OR IGNORE INTO Meta(Key, Value) VALUES ('LastActiveDate', '');
 ";
+                
             cmd.ExecuteNonQuery();
+
+
         }
 
 

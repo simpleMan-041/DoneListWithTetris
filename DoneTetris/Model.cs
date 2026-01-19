@@ -9,7 +9,7 @@ namespace DoneTetris
         public long Id { get; set; }
         public int BatchId { get; set; }
         public string DoneDate { get; set; } = "";
-        public string Text { get; set; } = "";
+        public string DoneText { get; set; } = "";
         public string CreatedAt { get; set; } = "";
         public int GrantedLengthN { get; set; }
     }

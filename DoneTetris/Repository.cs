@@ -17,7 +17,7 @@ namespace DoneTetris
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-SELECT Id, BatchId, DoneDate, Text, CreatedAt, GrantedLengthN
+SELECT Id, BatchId, DoneDate, DoneText, CreatedAt, GrantedLengthN
 FROM Done
 ORDER BY Id ASC;";
 
@@ -29,7 +29,7 @@ ORDER BY Id ASC;";
                     Id = r.GetInt64(0),
                     BatchId = r.GetInt32(1),
                     DoneDate = r.GetString(2),
-                    Text = r.GetString(3),
+                    DoneText = r.GetString(3),
                     CreatedAt = r.GetString(4),
                     GrantedLengthN = r.GetInt32(5)
                 });
@@ -45,11 +45,18 @@ ORDER BY Id ASC;";
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-SELECT d.Id, d.BatchId, d.DoneId, d.Text, d.CreatedAt, d.GrantedLengthN,
+SELECT
+    d.Id,
+    d.BatchId,
+    d.DoneText,
+    d.CreatedAt,
+    d.GrantedLengthN
 FROM Done d
 LEFT JOIN Move m ON m.DoneId = d.Id
 WHERE m.Id IS NULL
-ORDER BY d.Id ASC LIMIT 1;";
+ORDER BY d.Id ASC
+LIMIT 1;
+";
 
             using var r = cmd.ExecuteReader();
             if (!r.Read()) return null;
@@ -58,7 +65,7 @@ ORDER BY d.Id ASC LIMIT 1;";
                 Id = r.GetInt64(0),
                 BatchId = r.GetInt32(1),
                 DoneDate = r.GetString(2),
-                Text = r.GetString(3),
+                DoneText = r.GetString(3),
                 CreatedAt = r.GetString(4),
                 GrantedLengthN = r.GetInt32(5)
             };
@@ -74,7 +81,7 @@ ORDER BY d.Id ASC LIMIT 1;";
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
 
-        public void AddDone(int batchId, string doneDate, List<string> texts, Func<int> grantNFactory)
+        public void AddDones(int batchId, string doneDate, List<string> texts, Func<int> grantNFactory)
         {
             // textがリストなのは複数追加を可能にするため。
 
@@ -88,12 +95,12 @@ ORDER BY d.Id ASC LIMIT 1;";
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = @"
-INSERT INTO Done(BatchId, DoneDate, Text, CreatedAt, GrantedLengthN)
-VALUES ($batchId, $doneDate, $text, $createdAt, $n);";
+INSERT INTO Done(BatchId, DoneDate, DoneText, CreatedAt, GrantedLengthN)
+VALUES ($batchId, $doneDate, $doneText, $createdAt, $n);";
 
                 cmd.Parameters.AddWithValue("$batchId",batchId);
                 cmd.Parameters.AddWithValue("$doneDate", doneDate);
-                cmd.Parameters.AddWithValue("$text",text);
+                cmd.Parameters.AddWithValue("$doneText",text);
                 cmd.Parameters.AddWithValue("$createdAt",DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"));
                 cmd.Parameters.AddWithValue("$n",grantNFactory());
 
@@ -112,7 +119,7 @@ VALUES ($batchId, $doneDate, $text, $createdAt, $n);";
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-SELECT Id, BatchId, DoneDate, Text, CreatedAt, GrantedLengthN
+SELECT Id, BatchId, DoneDate, DoneText, CreatedAt, GrantedLengthN
 FROM Done
 WHERE DoneDate = $doneDate
 ORDER BY Id ASC;";
@@ -126,13 +133,42 @@ ORDER BY Id ASC;";
                     Id = r.GetInt64(0),
                     BatchId = r.GetInt32(1),
                     DoneDate = r.GetString(2),
-                    Text = r.GetString(3),
+                    DoneText = r.GetString(3),
                     CreatedAt = r.GetString(4),
                     GrantedLengthN = r.GetInt32(5)
                 });
             }
             
             return list;
+        }
+
+        public void DeleteDoneByIds(IEnumerable<long> ids)
+        {
+            // チェックが付けられたDoneを削除するためのメソッド
+            var idList = new List<long>(ids);
+            if (idList.Count == 0) return;
+            
+            using var conn = new SqliteConnection(Db.ConnectionString);
+            conn.Open();
+
+            using var tx = conn.BeginTransaction();
+
+            var placeholders = new List<string>();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+
+            for (int i = 0; i < idList.Count; i++)
+            {
+                var p = $"id{i}";
+                placeholders.Add(p);
+                cmd.Parameters.AddWithValue(p, idList[i]);
+            }
+
+            cmd.CommandText = $"DELETE FROM Done WHERE Id IN ({string.Join(",", placeholders)});";
+            cmd.ExecuteNonQuery();
+
+            tx.Commit();
+
         }
     }
 
