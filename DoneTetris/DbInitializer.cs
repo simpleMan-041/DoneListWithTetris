@@ -30,7 +30,7 @@ namespace DoneListWithTetris
 
             using var conn = new SqliteConnection(connectionString);
             conn.Open();
-
+            Debug.WriteLine(conn.DataSource);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
 PRAGMA foreign_keys = ON;

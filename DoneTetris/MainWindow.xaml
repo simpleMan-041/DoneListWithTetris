@@ -57,14 +57,12 @@
             </StackPanel>
         </Border>
 
-        <Border Grid.Column="3" Grid.RowSpan="5" 
+        <Border x:Name="TetrisBorder" Grid.Column="3" Grid.RowSpan="5" 
                 BorderBrush="Gray" BorderThickness="2" Background="#111" 
                 MouseDown="TetrisArea_Click"
-                MouseRightButtonDown="TetrisArea_RightClick" Margin="0,14,0,14">
-            <TextBlock Text="テトリス画面"
-                       Foreground="Gray"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"/>
+                MouseRightButtonDown="TetrisArea_RightClick" 
+                Margin="0,14,0,14">
+            <Canvas x:Name="TetrisCanvas"/>
         </Border>
 
         <Border Grid.Row="1" Grid.Column="4" Grid.RowSpan="2"
@@ -102,6 +100,8 @@
                 <StackPanel Grid.Row="0">
                     <TextBlock Text="Done追加入力(「。」区切り / Enterで保存)" Foreground="Gray" FontSize="12"/>
                     <TextBox x:Name="DoneInputBox"
+                             TextWrapping="Wrap"
+                             AcceptsReturn="False"
                              Margin="0,6,0,0"
                              FontSize="14"
                              Foreground="White"

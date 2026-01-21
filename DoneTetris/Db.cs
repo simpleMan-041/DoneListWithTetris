@@ -10,6 +10,10 @@ namespace DoneTetris
         public static readonly string DbPath = DbInitializer.GetDbPath();
 
         public static string ConnectionString =>
-            new SqliteConnectionStringBuilder { DataSource = DbPath }.ToString();
+            new SqliteConnectionStringBuilder 
+            { 
+                DataSource = DbPath,
+                ForeignKeys = true
+            }.ToString();
     }
 }

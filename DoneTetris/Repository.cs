@@ -64,10 +64,9 @@ LIMIT 1;
             {
                 Id = r.GetInt64(0),
                 BatchId = r.GetInt32(1),
-                DoneDate = r.GetString(2),
-                DoneText = r.GetString(3),
-                CreatedAt = r.GetString(4),
-                GrantedLengthN = r.GetInt32(5)
+                DoneText = r.GetString(2),
+                CreatedAt = r.GetString(3),
+                GrantedLengthN = r.GetInt32(4)
             };
         }
 
@@ -77,7 +76,7 @@ LIMIT 1;
             conn.Open();
 
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT COALECE(MAX(BatchId), 0) + 1 FROM Done;";
+            cmd.CommandText = "SELECT COALESCE(MAX(BatchId), 0) + 1 FROM Done;";
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
 
@@ -159,7 +158,7 @@ ORDER BY Id ASC;";
 
             for (int i = 0; i < idList.Count; i++)
             {
-                var p = $"id{i}";
+                var p = $"@id{i}";
                 placeholders.Add(p);
                 cmd.Parameters.AddWithValue(p, idList[i]);
             }
@@ -204,6 +203,27 @@ ORDER BY Id ASC;";
                 });
             }
             return list;
+        }
+
+        public void AddMove(Move move)
+        {
+            using var conn = new SqliteConnection(Db.ConnectionString);
+            conn.Open();
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+INSERT INTO Move(DoneId, PlacedAt, Column, StartRow, LengthN, IsVertical, ClearedLines)
+VALUES ($doneId, $placedAt, $col, $row, $len, $isV, $cleared);";
+
+            cmd.Parameters.AddWithValue("$doneId", move.DoneId);
+            cmd.Parameters.AddWithValue("$placedAt", move.PlacedAt);
+            cmd.Parameters.AddWithValue("$col", move.Column);
+            cmd.Parameters.AddWithValue("$row", move.StartRow);
+            cmd.Parameters.AddWithValue("$len", move.LengthN);
+            cmd.Parameters.AddWithValue("$isV", move.IsVertical ? 1 : 0);
+            cmd.Parameters.AddWithValue("$cleared", move.ClearedLines);
+
+            cmd.ExecuteNonQuery();
         }
     }
 

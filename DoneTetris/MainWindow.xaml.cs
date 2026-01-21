@@ -21,10 +21,16 @@ namespace DoneTetris
     /// </summary>
     public partial class MainWindow : Window
     {
+        private const int Cols = 10;
+        private const int Rows = 20;
+        
         private readonly DoneRepository _doneRepo = new();
         private readonly MoveRepository _moveRepo = new();
 
         private bool _nextIsVertical = false;
+
+        // 盤面を表現
+        private bool[,] _board = new bool[Rows, Cols];  
 
         public MainWindow()
         {
@@ -42,9 +48,170 @@ namespace DoneTetris
             TodayDoneListView.Focus();
         }
 
+        private void TetrisArea_RightClick(object sender, RoutedEventArgs e)
+        {
+            _nextIsVertical = !_nextIsVertical;
+            NextMinoOrientationText.Text = _nextIsVertical ? "縦" : "横";
+        }
+
+        private void TetrisArea_Click(object sender, MouseButtonEventArgs e)
+        {
+            var nextDone = _doneRepo.GetOldestUnplacedDone();
+            if (nextDone is null)
+            {
+                BlinkBorder(TetrisBorder, Colors.IndianRed);
+                return;
+            }
+
+            var p = e.GetPosition(TetrisCanvas);
+            int col = GetColumnFromX(p.X);
+
+            int n = nextDone.GrantedLengthN;
+            bool isVertical = _nextIsVertical;
+
+            if (!TryFindDropPlacement(_board, col, n, isVertical, out int startRow, out int leftCol))
+            {
+                BlinkBorder(TetrisBorder, Colors.IndianRed);
+                return;
+            }
+
+            var boardCopy = (bool[,])_board.Clone();
+            FillCells(boardCopy, startRow, leftCol, n, isVertical);
+            int cleared = ClearLines(boardCopy);
+
+            try
+            {
+                _moveRepo.AddMove(new Move
+                {
+                    DoneId = nextDone.Id,
+                    PlacedAt = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+                    Column = col,
+                    StartRow = startRow,
+                    LengthN = n,
+                    IsVertical = isVertical,
+                    ClearedLines = cleared
+                });
+
+                BlinkBorder(TetrisBorder, Colors.LightGreen);
+                LoadDoneAndMino();
+            }
+            catch
+            {
+                BlinkBorder(TetrisBorder, Colors.IndianRed);
+            }
+        }
+
+        private int GetColumnFromX(double x)
+        {
+            double w = Math.Max(1, TetrisCanvas.ActualWidth);
+            double cellW = w / Cols;
+            int col = (int)(x / cellW);
+            if (col < 0) col = 0; // 左右からはみ出したときのために補正をかけています。
+            if (col >= Cols) col = Cols - 1;
+            return col;
+        }
+
+        private static bool TryFindDropPlacement(bool[,] board, int centerCol, int n, bool isVertical,
+                                                out int startRow, out int leftCol)
+        {
+            startRow = -1;
+            leftCol = -1;
+
+            if (n < 1 || n > 5) return false;
+
+            if (!isVertical)
+            {
+                int left = centerCol - (n - 1) / 2;
+                int right = left + n - 1;
+                if (left < 0 || right >= Cols) return false;
+
+                for (int r = Rows - 1; r >= 0; r--)
+                {
+                    bool ok = true;
+                    for (int c = left; c <= right; c++)
+                    {
+                        if (board[r, c]) { ok = false; break; }
+                    }
+                    if (ok)
+                    {
+                        startRow = r;
+                        leftCol = left;
+                        return true;
+                    }
+                }
+                return false;
+            }
+            else
+            {
+                int c = centerCol;
+                int maxStart = Rows - n;
+                if (maxStart < 0) return false;
+
+                for (int r = maxStart; r >= 0; r--)
+                {
+                    bool ok = true;
+                    for (int k = 0; k < n; k++)
+                    {
+                        if (board[r + k, c]) { ok = false; break; }
+                    }
+                    if (ok)
+                    {
+                        startRow = r;
+                        leftCol = c;
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+
+        private static void FillCells(bool[,] board, int startRow, int leftCol,int n, bool isVertical)
+        {
+            // メモリ上のミノ配列データを書き換える。
+            if (!isVertical)
+            {
+                for (int i = 0; i < n; i++)
+                    board[startRow, leftCol + i] = true;
+            }
+            else
+            {
+                for (int i = 0; i < n; i++)
+                    board[startRow + i, leftCol] = true;
+            }
+        }
+
+        private static int ClearLines(bool[,] board)
+        {
+            int cleared = 0;
+
+            for (int r = Rows - 1; r >= 0; r--)
+            {
+                bool full = true;
+                for (int c = 0; c < Cols; c++)
+                {
+                    if (!board[r, c]) { full = false; break; }
+                }
+
+                if (!full) continue;
+
+                for (int rr = r; rr >= 1; rr--)
+                {
+                    for (int c = 0; c < Cols; c++)
+                        board[rr, c] = board[rr - 1, c];
+                }
+                
+                for (int c = 0; c < Cols; c++)
+                    board[0, c] = false;
+
+                cleared++;
+                r++;
+            }
+            return cleared;
+        }
+
         private void DoneInputBox_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Enter) return;
+            if (e.Key != Key.Enter) return;
 
             e.Handled = true;
 
@@ -117,17 +284,6 @@ namespace DoneTetris
 
         }
 
-        private void TetrisArea_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void TetrisArea_RightClick(object sender, EventArgs e)
-        {
-            _nextIsVertical = !_nextIsVertical;
-            NextMinoOrientationText.Text = _nextIsVertical ? "縦" : "横";
-        }
-
         private void LoadDoneAndMino()
         {
             var dones = _doneRepo.GetAllDonesOrdered();
@@ -138,30 +294,109 @@ namespace DoneTetris
             int totalCount = dones.Count();
             int score = moves.Sum(m => m.ClearedLines);
 
+            _board = new bool[Rows, Cols];
+            int computedScore = 0;
+
+            foreach (var m in moves)
+            {
+                if (m.LengthN < 1|| m.LengthN > 5) continue;
+                if (m.Column < 0 || m.Column > Cols) continue;
+
+                int n = m.LengthN;
+                bool isV = m.IsVertical;
+                // ミノを配置する際、左端のミノの位置を計算するための式。
+                // 左端がはみ出ないとき、右端の確認をした方が効率的だと考えたから。
+                int left = isV ? m.Column : (m.Column - (n - 1) / 2);
+
+                if (!CanPlace(_board, m.StartRow, left, n, isV)) continue;
+
+                FillCells(_board, m.StartRow, left, n, isV);
+                int cleared = ClearLines(_board);
+
+                // スコアはDBを使う方が一貫性があると判断したためClearedLanesを使う。
+                // 再構築の都合でclearedを使うことも問題ない。
+                computedScore += m.ClearedLines;
+            }
+
             TodayCountText.Text = todayCount.ToString();
             TotalCountText.Text = totalCount.ToString();
-            ScoreText.Text = score.ToString();
+            ScoreText.Text = computedScore.ToString();
 
             if (string.IsNullOrWhiteSpace(StreakText.Text))
                 StreakText.Text = "0";
 
             var nextDone = _doneRepo.GetOldestUnplacedDone();
-            if (nextDone is null)
-            {
-                NextMinoText.Text = "-";
-            }
-            else
-            {
-                NextMinoText.Text = nextDone.GrantedLengthN.ToString();
-            }
+            NextMinoText.Text = nextDone is null ? "-" : nextDone.GrantedLengthN.ToString();
+            NextMinoOrientationText.Text = _nextIsVertical ? "縦" : "横";
 
             var todayDones = _doneRepo.GetDonesByDate(today);
             TodayDoneListView.ItemsSource = todayDones
                 .Select(d => new DoneItemViewModel(d.Id, d.DoneText))
                 .ToList();
 
+            DrawBoard();
             ShowInputWarning(false);
 
+        }
+
+        private static bool CanPlace(bool[,] board, int startRow, int leftCol, int n, bool isVertical)
+        {
+            if (!isVertical)
+            {
+                int right = leftCol + n - 1;
+                if (startRow < 0 || startRow >= Rows) return false;
+                if (leftCol < 0 || right >= Cols) return false;
+
+                for (int c = leftCol; c <= right; c++)
+                    if (board[startRow, c]) return false;
+
+                return true;
+            }
+            else
+            {
+                int bottom = startRow + n - 1;
+                if (leftCol < 0 || leftCol >= Cols) return false;
+                if (startRow < 0 || bottom >= Rows) return false;
+
+                for (int r = startRow; r <= bottom; r++)
+                    if (board[r, leftCol]) return false;
+
+                return true;
+            }
+        }
+
+        private void DrawBoard()
+        {
+            if (TetrisCanvas == null) return;
+
+            TetrisCanvas.Children.Clear();
+
+            double w = Math.Max(1, TetrisCanvas.ActualWidth);
+            double h = Math.Max(1, TetrisCanvas.ActualHeight);
+
+            double cellW = w / Cols;
+            double cellH = h / Rows;
+
+            for (int r = 0; r < Rows; r++)
+            {
+                for (int c = 0; c < Cols; c++)
+                {
+                    if (!_board[r, c]) continue;
+
+                    var rect = new Rectangle
+                    {
+                        Width = Math.Max(1, cellW - 1),
+                        Height = Math.Max(1, cellH - 1),
+                        Fill = Brushes.MediumPurple,
+                        Stroke = Brushes.Black,
+                        StrokeThickness = 0.5
+                    };
+
+                    Canvas.SetLeft(rect, c * cellW);
+                    Canvas.SetTop(rect, r * cellH);
+                    TetrisCanvas.Children.Add(rect);
+                }
+            }
         }
 
         private static int GetMaxByStreak(int streak)
@@ -182,16 +417,17 @@ namespace DoneTetris
             InputWarningText.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private async void BlinkBorder(System.Windows.Controls.Control ctrl, Color color)
+        private async void BlinkBorder(FrameworkElement elem, Color color)
         {
             // 変更の保存・キャンセルが見ることで理解できるように枠色を一瞬変えて戻す機能を付ける。
             // 将来的に点滅させることを考えているため後ほどDispatchTimerを加える可能性がある。
-            var original = ctrl.BorderBrush;
-            ctrl.BorderBrush = new SolidColorBrush(color);
+            if (elem is not System.Windows.Controls.Border border) return;
 
-            await System.Threading.Tasks.Task.Delay(180);
+            Brush original = border.BorderBrush;
+            border.BorderBrush = new SolidColorBrush(color);
+            await System.Threading.Tasks.Task.Delay(160);
+            border.BorderBrush = original;
 
-            ctrl.BorderBrush = original;
         }
 
 
