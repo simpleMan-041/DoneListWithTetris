@@ -1,5 +1,5 @@
 # DoneTetris
-
+![実行画面](docs/ui/images/MainWindow.png)
 WPF + SQLite で作った、ゲーミフィケーション型のDoneリストアプリです。  
 Done（やったこと）を記録するとテトリスのブロック（棒ミノ）を1回配置でき、行消去数がスコアになります。
 
