@@ -26,6 +26,7 @@ namespace DoneTetris
         
         private readonly DoneRepository _doneRepo = new();
         private readonly MoveRepository _moveRepo = new();
+        private readonly MetaRepository _metaRepo = new();
 
         private bool _nextIsVertical = false;
 
@@ -39,7 +40,84 @@ namespace DoneTetris
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            NormalizeStreakOnStartUp();
             LoadDoneAndMino();
+        }
+
+        private void LoadDoneAndMino()
+        {
+            var dones = _doneRepo.GetAllDonesOrdered();
+            var moves = _moveRepo.GetAllMovesOrdered();
+
+            string today = DateTime.Now.ToString("yyyy-MM-dd");
+            int todayCount = dones.Count(d => d.DoneDate == today);
+            int totalCount = dones.Count();
+            int score = moves.Sum(m => m.ClearedLines);
+            int streak = _metaRepo.GetInt("CurrentStreak", 0);
+
+            _board = new bool[Rows, Cols];
+            int computedScore = 0;
+
+            foreach (var m in moves)
+            {
+                if (m.LengthN < 1 || m.LengthN > 5) continue;
+                if (m.Column < 0 || m.Column > Cols) continue;
+
+                int n = m.LengthN;
+                bool isV = m.IsVertical;
+                // ミノを配置する際、左端のミノの位置を計算するための式。
+                // 左端がはみ出ないとき、右端の確認をした方が効率的だと考えたから。
+                int left = isV ? m.Column : (m.Column - (n - 1) / 2);
+
+                if (!CanPlace(_board, m.StartRow, left, n, isV)) continue;
+
+                FillCells(_board, m.StartRow, left, n, isV);
+                int cleared = ClearLines(_board);
+
+                // スコアはDBを使う方が一貫性があると判断したためClearedLanesを使う。
+                // 再構築の都合でclearedを使うことも問題ない。
+                computedScore += m.ClearedLines;
+            }
+
+            TodayCountText.Text = todayCount.ToString();
+            TotalCountText.Text = totalCount.ToString();
+            StreakText.Text = streak.ToString();
+            ScoreText.Text = computedScore.ToString();
+
+            if (string.IsNullOrWhiteSpace(StreakText.Text))
+                StreakText.Text = "0";
+
+            var nextDone = _doneRepo.GetOldestUnplacedDone();
+            NextMinoText.Text = nextDone is null ? "-" : nextDone.GrantedLengthN.ToString();
+            NextMinoOrientationText.Text = _nextIsVertical ? "縦" : "横";
+
+            var todayDones = _doneRepo.GetDonesByDate(today);
+            TodayDoneListView.ItemsSource = todayDones
+                .Select(d => new DoneItemViewModel(d.Id, d.DoneText))
+                .ToList();
+
+            DrawBoard();
+            ShowInputWarning(false);
+
+        }
+
+        private void NormalizeStreakOnStartUp()
+        {
+            // CurrentStreakに補正を書けることでstreakを正確にするためのメソッド
+            var last = _metaRepo.Get("LastActivateDate") ?? "";
+            if (string.IsNullOrWhiteSpace(last))
+            {
+                _metaRepo.SetInt("CurrentStreak", 0);
+                return;
+            }
+
+            var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
+            var yesterday = DateTime.Now.Date.AddDays(-1).ToString("yyyy-MM-dd");
+
+            if (last != today && last != yesterday)
+            {
+                _metaRepo.SetInt("CurrentStreak", 0);
+            }
         }
 
         private void TodayDoneCount_Click(object sender, RoutedEventArgs e)
@@ -48,7 +126,7 @@ namespace DoneTetris
             TodayDoneListView.Focus();
         }
 
-        private void TetrisArea_RightClick(object sender, RoutedEventArgs e)
+        private void TetrisArea_RightClick(object sender, MouseButtonEventArgs e)
         {
             _nextIsVertical = !_nextIsVertical;
             NextMinoOrientationText.Text = _nextIsVertical ? "縦" : "横";
@@ -239,16 +317,16 @@ namespace DoneTetris
 
             int batchId = _doneRepo.GetNextBatchId();
 
-            int streak = SafeParseInt(StreakText.Text);
-            int maxN = GetMaxByStreak(streak);
-
-            var rnd = new Random();
-            int GrantN() => rnd.Next(1,maxN + 1);
-
             string today = DateTime.Now.ToString("yyyy-MM-dd");
 
             try
             {
+                int newStreak = ComputeAndUpdateSteak(today);
+                int maxN = GetMaxByStreak(newStreak);
+
+                var rnd = new Random();
+                int GrantN() => rnd.Next(1, maxN + 1);
+
                 _doneRepo.AddDones(batchId, today, parts, GrantN);
 
                 DoneInputBox.Clear();
@@ -257,7 +335,7 @@ namespace DoneTetris
             }
             catch
             {
-                ShowInputWarning(true, "保存に失敗しました。もう一度試してください！");
+                ShowInputWarning(true, "保存に失敗しました。もう一度試してください!");
                 BlinkBorder(DoneInputBox, Colors.IndianRed);
             }
         }
@@ -281,61 +359,6 @@ namespace DoneTetris
 
             _doneRepo.DeleteDoneByIds(selectedIds);
             LoadDoneAndMino() ;
-
-        }
-
-        private void LoadDoneAndMino()
-        {
-            var dones = _doneRepo.GetAllDonesOrdered();
-            var moves = _moveRepo.GetAllMovesOrdered();
-
-            string today = DateTime.Now.ToString("yyyy-MM-dd");
-            int todayCount = dones.Count(d => d .DoneDate == today);
-            int totalCount = dones.Count();
-            int score = moves.Sum(m => m.ClearedLines);
-
-            _board = new bool[Rows, Cols];
-            int computedScore = 0;
-
-            foreach (var m in moves)
-            {
-                if (m.LengthN < 1|| m.LengthN > 5) continue;
-                if (m.Column < 0 || m.Column > Cols) continue;
-
-                int n = m.LengthN;
-                bool isV = m.IsVertical;
-                // ミノを配置する際、左端のミノの位置を計算するための式。
-                // 左端がはみ出ないとき、右端の確認をした方が効率的だと考えたから。
-                int left = isV ? m.Column : (m.Column - (n - 1) / 2);
-
-                if (!CanPlace(_board, m.StartRow, left, n, isV)) continue;
-
-                FillCells(_board, m.StartRow, left, n, isV);
-                int cleared = ClearLines(_board);
-
-                // スコアはDBを使う方が一貫性があると判断したためClearedLanesを使う。
-                // 再構築の都合でclearedを使うことも問題ない。
-                computedScore += m.ClearedLines;
-            }
-
-            TodayCountText.Text = todayCount.ToString();
-            TotalCountText.Text = totalCount.ToString();
-            ScoreText.Text = computedScore.ToString();
-
-            if (string.IsNullOrWhiteSpace(StreakText.Text))
-                StreakText.Text = "0";
-
-            var nextDone = _doneRepo.GetOldestUnplacedDone();
-            NextMinoText.Text = nextDone is null ? "-" : nextDone.GrantedLengthN.ToString();
-            NextMinoOrientationText.Text = _nextIsVertical ? "縦" : "横";
-
-            var todayDones = _doneRepo.GetDonesByDate(today);
-            TodayDoneListView.ItemsSource = todayDones
-                .Select(d => new DoneItemViewModel(d.Id, d.DoneText))
-                .ToList();
-
-            DrawBoard();
-            ShowInputWarning(false);
 
         }
 
@@ -430,7 +453,23 @@ namespace DoneTetris
 
         }
 
+        private int ComputeAndUpdateSteak(string today)
+        {
+            var last = _metaRepo.Get("LastActivateDate") ?? "";
+            int streak = _metaRepo.GetInt("CurrentStreak", 0);
 
+            if (last == today) return streak;
+
+            var yesterday = DateTime.Now.AddDays(-1).ToString("yyyy-MM-dd");
+
+            int newStreak = (last == yesterday) ? (streak + 1) : 1;
+
+            _metaRepo.Set("LastActiveDate", today);
+            _metaRepo.SetInt("CurrentStreak", newStreak);
+
+            return newStreak;
+
+        }
 
 
 

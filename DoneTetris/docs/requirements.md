@@ -1,285 +1,253 @@
----
+# DoneTetris 要件定義（実装準拠・確定版）
 
-# DoneTetris 要件確定：画面イベント一覧＋DB最小設計（確定版）
+## 0. 前提
 
-## 0. 前提（確定）
+* **アプリ概要**
+  * 1日のDone（やったこと）を記録すると、テトリス盤面にミノを1つ配置できる
+  * Done管理とゲーム進行は常にDBの履歴から再構築される
 
-* **次ミノの選び方**：未配置Done（Moveが存在しないDone）の **先頭（最も古い）1件**
-* **横ミノ基準**：クリック列を **中心**として配置（中心揃え）
-* **Done削除と盤面**：直近追加を取り消すと **盤面も巻き戻す（再構築）**
-* **今日判定**：ローカル日付（`DateTime.Now.Date`、0:00切替）
-* **ミノ**：棒型のみ
+* **次ミノの選び方**
+  * 未配置Done（Moveが存在しないDone）の **先頭（最も古い）1件**
 
-  * 長さ `N=1..maxN`（maxNは連続日数により決定）
-  * 方向：横（1×N）/縦（N×1）を **回転で切替**
+* **ミノ配置基準**
+  * クリックした列を **中心** として配置（中心揃え）
 
----
+* **Done削除と盤面**
+  * Doneを削除すると、それに対応するMoveも削除される
+  * 盤面は **Move履歴から再構築** されるため、常に整合が保たれる
 
-## 1. MainWindow：イベント一覧（確定）
+* **今日判定**
+  * ローカル日付（`DateTime.Now.Date`）
+  * 0:00 で日付切替
 
-### 1.1 LoadDoneAndMino（起動時・再読み込み）
-
-**目的**：DBから状態復元→統計・次ミノ・盤面を描画
-
-* 入力：なし
-* DB（読み）
-
-  * Done：全件（Id/CreatedAt昇順で利用）
-  * Move：全件（PlacedAt/Id昇順で適用）
-  * Meta：CurrentStreak、LastActiveDate
-* 処理（ロジック）
-
-  1. Metaから連続日数などを復元
-  2. 盤面を空で初期化
-  3. Moveを順に適用して盤面再構築（ライン消去も反映）
-  4. スコア = `sum(ClearedLines)`
-  5. 今日Done数/総Done数/継続日数を算出
-  6. **未配置Done（Moveが無いDone）を抽出**
-  7. **次ミノ = 未配置Doneの先頭1件** の `GrantedLengthN` を表示
-
-     * 未配置が無ければ「次ミノなし（手数0）」表示
-* 出力（UI更新）
-
-  * 盤面描画
-  * 総Done数、今日Done数、スコア、継続日数
-  * 次ミノ表示（長さN・向き）
-
-> 運用ルール：画面更新は迷ったら **LoadDoneAndMino() で統一**（最初はこれが最強）
+* **ミノ仕様**
+  * 棒型のみ
+  * 長さ `N = 1..maxN`
+  * `maxN` は継続日数（CurrentStreak）により決定
+  * 方向：横（1×N）/縦（N×1）
+  * 右クリックで回転（縦横切替）
 
 ---
 
-### 1.2 AddButton_Click（Done記録ボタン）
+## 1. MainWindow：イベント一覧
 
-* 入力：なし
-* 処理
+### 1.1 LoadDoneAndMino（起動時・再描画）
 
-  * AddDoneWindow を `ShowDialog()`
-  * 戻り値 `true` のとき `LoadDoneAndMino()` を実行
-* DB：なし（AddDoneWindow側で実施）
-* UI：再読み込みで全更新
+**目的**  
+DBから状態を復元し、統計・次ミノ・盤面を描画する  
+※ 画面更新はすべてこのメソッドに集約する
 
----
+**DB（読み）**
 
-### 1.3 TodayDoneCount_Click（今日Done数エリアクリック）
+* Done：全件（Id昇順）
+* Move：全件（Id昇順）
+* Meta：CurrentStreak / LastActiveDate
 
-* 入力：今日の日付
-* DB（読み）
+**処理**
 
-  * 今日Done一覧（DoneDate==today）を取得
-* 出力（UI）
+1. 継続日数（Meta）を読み込み
+2. 盤面を空で初期化
+3. Moveを順に適用して盤面を再構築（行消去含む）
+4. スコア = `sum(Move.ClearedLines)`
+5. 今日Done数 / 総Done数 / 継続日数を算出
+6. 未配置Doneを抽出
+7. 次ミノ = 未配置Doneの先頭1件の `GrantedLengthN`
 
-  * TodayDoneWindow（ListViewに表示）
+**UI更新**
 
----
-
-### 1.4 Undo_Done_Addition_Click（直近の追加取り消し）
-
-**目的**：直近の追加操作（複数Done）をまとめて取り消し、盤面も巻き戻す
-
-* 入力：なし
-* DB（読み）
-
-  * 最新BatchId = `MAX(Done.BatchId)`
-* DB（書き）
-
-  * `Done`：そのBatchIdの行を削除
-  * `Move`：それらDoneIdに紐づくMoveを削除（FK CASCADE推奨）
-* 処理
-
-  * 削除後 `LoadDoneAndMino()` を実行
-* 出力（UI）
-
-  * 盤面、統計、次ミノ、今日Done表示を再構築
-
-> 注意：Idを「追加回数でインクリメント」ではなく、**BatchId列でグループ化**する。
+* 盤面描画
+* スコア / 今日Done / 総Done / 継続日数
+* 次ミノ表示（長さ・向き）
 
 ---
 
-### 1.5 TetrisArea_Click（盤面クリックで配置）
+### 1.2 Done入力（右下テキストボックス）
 
-**目的**：次ミノ（未配置Done先頭）を、クリック列を中心に落下配置する
+**入力方式**
 
-* 入力
+* 右下に **常設の入力欄**
+* 「。」区切りで複数Done入力可能
+* **Enterキーで保存**
+* 改行は不可（1行入力）
+* 表示は折り返し
 
-  * クリックされた列 `col`
-  * 次ミノ（未配置Done先頭の GrantedLengthN）と現在向き（IsVertical）
-* DB（読み）
+**処理**
 
-  * 次ミノ対象の Done（未配置先頭1件）
-* 処理（配置ロジック）
+1. 空入力チェック
+   * 空の場合：警告表示＋入力欄を赤点滅
+2. `。` で分割 → trim → 空要素除去
+3. 新規BatchIdを採番
+4. 継続日数（Meta）を更新
+5. 更新後の継続日数を元に `maxN` を決定
+6. DoneをINSERT（各Doneに GrantedLengthN 付与）
+7. 入力欄クリア
+8. `LoadDoneAndMino()` 実行
 
-  1. 未配置Doneが無ければ何もしない
-  2. 置くミノの `N` と向き（横/縦）を確定
-  3. 配置対象セル範囲を算出（**中心基準**）
-  4. 下から上へ探索し、衝突しない最下段に配置
-  5. 配置後、ライン消去→ `ClearedLines` を算出
-* DB（書き）
+**UI演出**
 
-  * MoveをINSERT（DoneIdと1:1で紐づけ）
-* 出力（UI）
+* 成功：入力欄の枠が一瞬緑
+* 失敗：入力欄の枠が赤
 
-  * 盤面と統計と次ミノを更新
-  * 最初は `LoadDoneAndMino()` 呼びでもOK
+---
 
-#### 中心基準：範囲計算（仕様として確定）
+### 1.3 今日Done一覧（右下 ListView）
 
-* **横向き（1×N）**
+* 今日のDoneを常時表示
+* 各行にチェックボックスを持つ
+* Textは折り返し表示
 
-  * `left = col - (N-1)/2`（整数除算）
+---
+
+### 1.4 選択削除（右下）
+
+**目的**  
+チェックされたDoneを任意に削除する
+
+**処理**
+
+1. チェックされたDoneIdを取得
+2. 確認ダイアログ表示
+3. Doneを削除（FK CASCADE により Move も削除）
+4. `LoadDoneAndMino()` 実行
+
+**仕様**
+
+* 未配置 / 配置済み Done のどちらも削除可能
+* 削除後、盤面は自動で巻き戻る
+
+---
+
+### 1.5 TetrisArea_Click（盤面クリック）
+
+**目的**  
+次ミノをクリック列中心で落下配置する
+
+**入力**
+
+* クリック列
+* 次ミノ（未配置Done先頭）
+* 向き（横/縦）
+
+**処理**
+
+1. 未配置Doneが無ければ何もしない
+2. ミノの長さと向きを確定
+3. 中心基準で配置範囲を計算
+4. 下から上へ探索し、配置可能な最下段を探す
+5. 仮配置 → 行消去数算出
+6. MoveをINSERT（DoneIdと1:1）
+7. `LoadDoneAndMino()` 実行
+
+#### 中心基準計算
+
+* 横（1×N）
+  * `left = col - (N-1)/2`
   * `right = left + N - 1`
-  * 盤面外なら配置失敗（置けない）
-* **縦向き（N×1）**
-
-  * 列は `col` 固定、縦にNマス
-
-> “中心”は見た目が自然。Nが偶数のときは左寄りになる（上式）で確定。
+* 縦（N×1）
+  * 列固定、縦にNマス
 
 ---
 
-### 1.6 rotate_mino_right（右クリックで回転）
+### 1.6 右クリック回転
 
-* 入力：なし
-* 処理：次ミノの向きをトグル（横⇄縦）
-* DB：MVPでは保存しない（再起動で戻るのは許容）
-* 出力（UI）：次ミノ表示だけ更新（または再読み込み）
-
----
-
-## 2. 追加画面（AddDoneWindow）：イベント一覧（確定）
-
-### 2.1 SaveButton_Click（保存）
-
-* 入力：テキスト（「。」区切りのDone）
-* DB（書き）
-
-  1. 新規BatchIdを採番（`MAX(BatchId)+1`）
-  2. 入力を `。` で分割 → trim → 空要素除去
-  3. 1要素ごとにDone INSERT
-
-     * DoneDate = today
-     * GrantedLengthN = ランダム決定（連続日数に応じてmaxN）
-  4. Meta更新（継続日数・最終達成日）
-* 出力（UI）
-
-  * `DialogResult=true` で閉じる（Mainが再読み込み）
-
-#### GrantedLengthN（確定ロジック例）
-
-* `streak` に応じて `maxN` を決める（例）
-
-  * 1〜2→2、3〜4→3、5〜6→4、7+→5
-* `GrantedLengthN = Random(1..maxN)`
+* 右クリックで次ミノの向きを切替
+* 状態はメモリ保持（DBには保存しない）
+* 表示のみ更新
 
 ---
 
-### 2.2 Cancel（キャンセル）
+## 2. 継続日数（Meta）仕様（本実装）
 
-* 出力：`DialogResult=false` で閉じる
+* 達成日 = その日にDoneが1件以上追加された日
+* 同日に何回追加しても +1 されない
 
----
+**更新ルール**
 
-## 3. 今日Done表示画面（TodayDoneWindow）：イベント一覧（確定）
+* LastActiveDate == 今日  
+  → 変化なし
+* LastActiveDate == 昨日  
+  → CurrentStreak +1
+* それ以外  
+  → CurrentStreak = 1
 
-* 表示：今日のDone一覧（Text、日付、時刻など）
-* MVP
+**起動時補正**
 
-  * 戻るボタン（Click）で閉じる
-* Nice（余裕があれば）
-
-  * ダブルクリックで編集画面（今回は後回し推奨）
-
----
-
-## 4. DB最小設計
-MVP完成後にSQLクエリを定数クラスでまとめることで処理が読みやすくなるかもしれない。現時点ではDbInitializeに書いておく。
-### 4.1 Done
-
-* `Id` INTEGER PRIMARY KEY AUTOINCREMENT 
-* `BatchId` INTEGER NOT NULL 削除用：追加Doneのまとまり
-* `DoneDate` TEXT NOT NULL（YYYY-MM-DD）やった日
-* `Text` TEXT NOT NULL
-* `CreatedAt` TEXT NOT NULL（ISO文字列）データを作った日時
-* `GrantedLengthN` INTEGER NOT NULL（1〜5）ミノのサイズ
-
-### 4.2 Move（1Done=1配置を保証）
-
-* `Id` INTEGER PRIMARY KEY AUTOINCREMENT
-* `DoneId` INTEGER NOT NULL UNIQUE（FK Done.Id）
-* `PlacedAt` TEXT NOT NULL
-* `Column` INTEGER NOT NULL（中心列）
-* `StartRow` INTEGER NOT NULL（復元用に保存）
-* `LengthN` INTEGER NOT NULL
-* `IsVertical` INTEGER NOT NULL（0/1）
-* `ClearedLines` INTEGER NOT NULL
-
-> UNIQUE制約で「同じDoneを2回置く」バグをDB側で防ぐ。
-
-### 4.3 Meta（Key-Value推奨）
-
-* `Key` TEXT PRIMARY KEY
-* `Value` TEXT NOT NULL
-
-格納例：
-
-* Key=`CurrentStreak` Value=`7`
-* Key=`LastActiveDate` Value=`2026-01-14`
+* LastActiveDate が 今日/昨日 以外なら
+  * CurrentStreak = 0
 
 ---
 
-## 5. DBアクセス最小設計（Repository：確定）
+## 3. DBスキーマ（実装準拠）
 
-イベントから逆算した、最低限のメソッド群。
+### 3.1 Done
 
-### 5.1 DoneRepository
-
-* `int GetNextBatchId()`
-* `void AddDones(int batchId, DateOnly date, List<string> texts, Func<int> grantNFactory)`
-* `List<Done> GetDonesByDate(DateOnly date)`
-* `List<Done> GetAllDonesOrdered()`（Id or CreatedAt昇順）
-* `int? GetLatestBatchId()`
-* `void DeleteDoneBatch(int batchId)`（MoveがCASCADEならこれで足りる）
-* `Done? GetOldestUnplacedDone()`（次ミノ用：Moveが無いDone先頭）
-
-### 5.2 MoveRepository
-
-* `List<Move> GetAllMovesOrdered()`
-* `void AddMove(Move move)`
-* `void DeleteMovesByDoneIds(IEnumerable<long> doneIds)`（CASCADEなし運用の場合）
-
-### 5.3 MetaRepository
-
-* `int GetCurrentStreak() / void SetCurrentStreak(int value)`
-* `DateOnly? GetLastActiveDate() / void SetLastActiveDate(DateOnly date)`
+| 列名 | 型 | 説明 |
+|----|----|----|
+| Id | INTEGER PK | |
+| BatchId | INTEGER | 追加操作の単位 |
+| DoneDate | TEXT | YYYY-MM-DD |
+| Text | TEXT | Done内容 |
+| CreatedAt | TEXT | 作成日時 |
+| GrantedLengthN | INTEGER | ミノ長さ（1〜5） |
 
 ---
 
-## 6. イベント→Repository対応（確定）
+### 3.2 Move
 
-* Main.LoadDoneAndMino
-  → DoneRepo.GetAllDonesOrdered
-  → MoveRepo.GetAllMovesOrdered
-  → MetaRepo.Get…
-  → DoneRepo.GetOldestUnplacedDone（次ミノ）
-* AddDone.Save
-  → DoneRepo.GetNextBatchId
-  → DoneRepo.AddDones
-  → MetaRepo.Set…
-* Undo
-  → DoneRepo.GetLatestBatchId
-  → DoneRepo.DeleteDoneBatch（+ Move削除が必要ならMoveRepo）
-* TetrisArea_Click
-  → DoneRepo.GetOldestUnplacedDone
-  → MoveRepo.AddMove
-  → 再描画（LoadDoneAndMinoでも可）
-* TodayDoneCount_Click
-  → DoneRepo.GetDonesByDate
+| 列名 | 型 | 説明 |
+|----|----|----|
+| Id | INTEGER PK | |
+| DoneId | INTEGER UNIQUE | Doneと1:1 |
+| PlacedAt | TEXT | 配置日時 |
+| Column | INTEGER | 中心列 |
+| StartRow | INTEGER | 上端行 |
+| LengthN | INTEGER | ミノ長さ |
+| IsVertical | INTEGER | 0/1 |
+| ClearedLines | INTEGER | 消去行数 |
+
+* FK: Done(Id) ON DELETE CASCADE
 
 ---
 
-### 変更点や今後のためのメモ
-ボタンを2つ作成する予定だったが無し。
-右下に配置する予定であった追加ボタンはウィンドウの移動なく、そのまま入力して追加できるテキストボックスを配置。
+### 3.3 Meta
 
-本来左下に配置する予定であった削除ボタンは右下のテキストボックスに付随させる形で統合。本家テトリスらしく画面左端にはロゴ配置を予定。
+| Key | Value |
+|----|----|
+| CurrentStreak | int |
+| LastActiveDate | yyyy-MM-dd |
 
-DBアクセスのためのラッパーを作ってもいいかもしれない。
+---
+
+## 4. Repository（最小構成）
+
+### DoneRepository
+* GetNextBatchId
+* AddDones
+* GetAllDonesOrdered
+* GetDonesByDate
+* GetOldestUnplacedDone
+* DeleteDoneByIds
+
+### MoveRepository
+* GetAllMovesOrdered
+* AddMove
+
+### MetaRepository
+* Get / Set
+* GetInt / SetInt
+
+---
+
+## 5. 設計メモ（将来向け）
+
+* UIイベントは MainWindow に集約
+* 状態は保持せず、必ず DB → 再構築
+* Board / Streak を Service として分離可能
+* 演出系（枠色点滅・行消去エフェクト）は後付け前提
+
+## 6. 将来的にアップデートを行うとしたら
+* 行がそろったときに音声・エフェクトを入れる。
+* listview内で日付検索が出来るようにする。
+* ミノの形状を本家にそろえる
+* スコアが一定量に到達するごとに演出が入る。
+

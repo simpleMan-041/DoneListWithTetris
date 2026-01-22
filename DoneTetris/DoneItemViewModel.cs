@@ -11,6 +11,7 @@ namespace DoneTetris
         public event PropertyChangedEventHandler? PropertyChanged;
         public long Id { get; }
         public string DoneText { get; }
+
         private bool _IsSelected;
         public bool IsSelected
         {
